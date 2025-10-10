@@ -44,7 +44,8 @@ MANIFEST = {
 
 class MCPProxyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/manifest.json':
+        if self.path in ['/', '/manifest.json']:
+            # Serve manifest at both root and /manifest.json
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -80,7 +81,8 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        if self.path.startswith('/messages'):
+        if self.path.startswith('/messages') or self.path in ['/', '/manifest.json']:
+            # Handle JSON-RPC at multiple endpoints
             # Extract query parameters
             parsed = urlparse(self.path)
             query_params = parse_qs(parsed.query)
