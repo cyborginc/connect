@@ -118,14 +118,41 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
                         session_id = query_params['sessionId'][0]
                         print(f"Using session ID from query params: {session_id}")
                     else:
-                        print("No session ID found, returning 400")
-                        self.send_response(400)
-                        self.send_header('Content-Type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "error": "No active session. Connect to /sse first."
-                        }).encode())
-                        return
+                        # Auto-create a session by connecting to SSE briefly
+                        print("No session ID found, creating one...")
+                        try:
+                            sse_response = requests.get(
+                                f"http://localhost:{REDPANDA_MCP_PORT}/sse",
+                                stream=True,
+                                timeout=5
+                            )
+
+                            # Extract session ID from first SSE message
+                            for line in sse_response.iter_lines():
+                                if line:
+                                    line_str = line.decode('utf-8')
+                                    print(f"SSE line: {line_str}")
+                                    if line_str.startswith('data: /message?sessionId='):
+                                        session_id = line_str.split('sessionId=')[1]
+                                        active_sessions[client_ip] = session_id
+                                        print(f"Auto-created session ID: {session_id}")
+                                        break
+
+                            # Close the SSE connection
+                            sse_response.close()
+
+                            if not session_id:
+                                raise Exception("Could not extract session ID from SSE")
+
+                        except Exception as e:
+                            print(f"Failed to auto-create session: {e}")
+                            self.send_response(400)
+                            self.send_header('Content-Type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "error": f"Could not create session: {e}"
+                            }).encode())
+                            return
 
                 # Forward to RedPanda Connect /message endpoint with session ID
                 url = f"http://localhost:{REDPANDA_MCP_PORT}/message?sessionId={session_id}"
