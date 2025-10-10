@@ -1,0 +1,26 @@
+{
+  "name": "CyborgDB Query Server",
+  "version": "1.0.0",
+  "description": "Query your indexed documents in CyborgDB using semantic search",
+  "transport": "sse",
+  "endpoints": {
+    "sse": "http://23.22.29.11:8080/sse",
+    "message": "http://23.22.29.11:8080/message"
+  },
+  "tools": [
+    {
+      "name": "query_documents",
+      "description": "Query your indexed documents in CyborgDB using semantic search",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "The search query text"
+          }
+        },
+        "required": ["input"]
+      }
+    }
+  ]
+}
