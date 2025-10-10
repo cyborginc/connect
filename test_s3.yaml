@@ -1,0 +1,17 @@
+input:
+  aws_s3:
+    bucket: ${S3_BUCKET}
+    prefix: ${S3_PREFIX:}
+    region: ${AWS_REGION:us-east-1}
+    credentials:
+      id: ${AWS_ACCESS_KEY_ID}
+      secret: ${AWS_SECRET_ACCESS_KEY}
+    codec: all-bytes
+
+output:
+  stdout:
+    codec: lines
+
+logger:
+  level: DEBUG
+  format: json

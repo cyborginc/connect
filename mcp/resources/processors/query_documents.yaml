@@ -1,0 +1,80 @@
+label: 'query_documents'
+processors:
+  # Generate embeddings for the query
+  - mapping: |
+      root = {
+        "model": "text-embedding-ada-002",
+        "input": content().string()
+      }
+
+  - http:
+      verb: POST
+      url: https://api.openai.com/v1/embeddings
+      headers:
+        Authorization: Bearer ${OPENAI_API_KEY}
+        Content-Type: application/json
+      retries: 2
+      timeout: 10s
+
+  # Extract embedding and prepare query
+  - mapping: |
+      let query_text = json("input")
+      let query_vector = content().parse_json().data.index(0).embedding
+
+      # Convert base64 key to hex if needed
+      let index_key = env("CYBORGDB_INDEX_KEY")
+      let index_key_hex = if $index_key.contains("=") || $index_key.contains("+") || $index_key.contains("/") {
+        $index_key.decode("base64").encode("hex")
+      } else {
+        $index_key
+      }
+
+      root = {
+        "index_name": env("CYBORGDB_INDEX_NAME").or("documents"),
+        "index_key": $index_key_hex,
+        "query_vectors": $query_vector,
+        "top_k": 5,
+        "include": ["distance", "metadata"]
+      }
+
+  # Query CyborgDB
+  - http:
+      verb: POST
+      url: ${CYBORGDB_HOST}/v1/vectors/query
+      headers:
+        X-API-Key: ${CYBORGDB_API_KEY}
+        Content-Type: application/json
+      retries: 2
+      timeout: 10s
+
+  # Format results
+  - mapping: |
+      let results = content().parse_json()
+      root = if $results.exists("results") && $results.results.length() > 0 {
+        {
+          "query": json("input"),
+          "found": $results.results.length(),
+          "documents": $results.results.map_each(r -> {
+            "file": r.metadata.path.or("unknown"),
+            "score": r.distance,
+            "bucket": r.metadata.bucket.or(""),
+            "preview": r.metadata.content_preview.or("").slice(0, 200)
+          })
+        }
+      } else {
+        {
+          "query": json("input"),
+          "found": 0,
+          "documents": [],
+          "message": "No matching documents found"
+        }
+      }
+
+meta:
+  mcp:
+    enabled: true
+    description: 'Query your indexed documents in CyborgDB using semantic search'
+    tags:
+      - search
+      - query
+      - vectordb

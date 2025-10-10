@@ -1,0 +1,57 @@
+input:
+  aws_s3:
+    bucket: ${S3_BUCKET}
+    prefix: ${S3_PREFIX:}
+    region: ${AWS_REGION:us-east-1}
+    credentials:
+      id: ${AWS_ACCESS_KEY_ID}
+      secret: ${AWS_SECRET_ACCESS_KEY}
+    codec: all-bytes
+    delete_objects: false
+
+pipeline:
+  processors:
+    # Extract content and metadata
+    - mapping: |
+        root.id = uuid_v4()
+        root.content = content().string().slice(0, 100)  # Just preview
+        root.source = "s3"
+        root.path = meta("s3_key")
+        root.bucket = meta("s3_bucket")
+        root.status = "Processing file: " + meta("s3_key")
+
+    # Call OpenAI API directly for embeddings
+    - branch:
+        processors:
+          - mapping: |
+              root = {
+                "model": "text-embedding-ada-002",
+                "input": this.content
+              }
+          - http:
+              verb: POST
+              url: https://api.openai.com/v1/embeddings
+              headers:
+                Authorization: Bearer ${OPENAI_API_KEY}
+                Content-Type: application/json
+              retries: 1
+              timeout: 10s
+        result_map: |
+          root = this
+          let response = content().parse_json().catch({})
+          root.embedding_size = $response.data.index(0).embedding.length().catch(0)
+          root.embedding_status = if $response.exists("data") { "success" } else { "failed: " + content().string() }
+
+    # Show results
+    - mapping: |
+        root = {
+          "file": this.path,
+          "content_preview": this.content,
+          "embedding_status": this.embedding_status,
+          "embedding_dimensions": this.embedding_size,
+          "would_send_to_cyborgdb": this.embedding_size > 0
+        }
+
+output:
+  stdout:
+    codec: lines

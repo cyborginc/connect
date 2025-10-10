@@ -1,0 +1,92 @@
+input:
+  aws_s3:
+    bucket: ${S3_BUCKET}
+    prefix: ${S3_PREFIX:}
+    region: ${AWS_REGION:us-east-1}
+    credentials:
+      id: ${AWS_ACCESS_KEY_ID}
+      secret: ${AWS_SECRET_ACCESS_KEY}
+    codec: all-bytes
+    delete_objects: false
+
+pipeline:
+  processors:
+    # Log when we get a file
+    - log:
+        level: INFO
+        message: "📄 Processing file: ${! meta(\"s3_key\") }"
+
+    # Extract and prepare content
+    - mapping: |
+        let doc_content = content().string()
+        root = {
+          "id": uuid_v4(),
+          "content": $doc_content.slice(0, 8000),
+          "full_content": $doc_content,
+          "source": "s3",
+          "path": meta("s3_key"),
+          "bucket": meta("s3_bucket")
+        }
+
+    # Generate embeddings
+    - branch:
+        processors:
+          - mapping: |
+              root = {
+                "model": "text-embedding-ada-002",
+                "input": this.content
+              }
+          - http:
+              verb: POST
+              url: https://api.openai.com/v1/embeddings
+              headers:
+                Authorization: Bearer ${OPENAI_API_KEY}
+                Content-Type: application/json
+              retries: 3
+              timeout: 30s
+        result_map: |
+          root = this
+          root.embeddings = content().parse_json().data.index(0).embedding
+
+    # Log success
+    - log:
+        level: INFO
+        message: "✅ Embeddings generated for: ${! json(\"path\") }"
+
+    # Prepare for CyborgDB
+    - mapping: |
+        root = {
+          "id": this.id,
+          "vector": this.embeddings,
+          "metadata": {
+            "source": this.source,
+            "path": this.path,
+            "bucket": this.bucket,
+            "content_preview": this.full_content.slice(0, 500),
+            "content_length": this.full_content.length(),
+            "indexed_at": now().string()
+          }
+        }
+
+    # Log before sending
+    - log:
+        level: INFO
+        message: "➡️ Sending to CyborgDB: ${! json(\"metadata.path\") }"
+
+output:
+  cyborgdb:
+    host: ${CYBORGDB_HOST}
+    api_key: ${CYBORGDB_API_KEY}
+    index_name: ${CYBORGDB_INDEX_NAME:documents}
+    index_key: ${CYBORGDB_INDEX_KEY}
+    create_if_missing: true
+    operation: upsert
+    id: ${! json("id") }
+    vector_mapping: root = this.vector
+    metadata_mapping: root = this.metadata
+    max_in_flight: 1
+
+logger:
+  level: INFO
+  format: logfmt
+  add_timestamp: true

@@ -1,0 +1,73 @@
+input:
+  aws_s3:
+    bucket: ${S3_BUCKET}
+    prefix: ${S3_PREFIX:}
+    region: ${AWS_REGION:us-east-1}
+    credentials:
+      id: ${AWS_ACCESS_KEY_ID}
+      secret: ${AWS_SECRET_ACCESS_KEY}
+    codec: all-bytes
+    delete_objects: false
+
+pipeline:
+  processors:
+    # Extract content and metadata
+    - mapping: |
+        root.id = uuid_v4()
+        root.content = content().string().slice(0, 8000)  # Limit for OpenAI
+        root.source = "s3"
+        root.path = meta("s3_key")
+        root.bucket = meta("s3_bucket")
+
+    # Call OpenAI API directly for embeddings
+    - branch:
+        processors:
+          - mapping: |
+              root = {
+                "model": "text-embedding-ada-002",
+                "input": this.content
+              }
+          - http:
+              verb: POST
+              url: https://api.openai.com/v1/embeddings
+              headers:
+                Authorization: Bearer ${OPENAI_API_KEY}
+                Content-Type: application/json
+              retries: 3
+              timeout: 30s
+        result_map: |
+          root = this
+          root.embeddings = content().parse_json().data.index(0).embedding
+
+    # Prepare for CyborgDB
+    - mapping: |
+        root.id = this.id
+        root.vector = this.embeddings
+        root.metadata = {
+          "source": this.source,
+          "path": this.path,
+          "bucket": this.bucket,
+          "content_preview": this.content.slice(0, 500),
+          "indexed_at": now()
+        }
+
+output:
+  cyborgdb:
+    host: ${CYBORGDB_HOST:api.cyborg.com}
+    api_key: ${CYBORGDB_API_KEY}
+    index_name: ${CYBORGDB_INDEX_NAME:documents}
+    index_key: ${CYBORGDB_INDEX_KEY}
+    create_if_missing: true
+    operation: upsert
+    id: ${! json("id") }
+    vector_mapping: root = this.vector
+    metadata_mapping: root = this.metadata
+    batching:
+      count: 10
+      period: 5s
+    max_in_flight: 32
+
+logger:
+  level: ${LOG_LEVEL:INFO}
+  format: json
+  add_timestamp: true

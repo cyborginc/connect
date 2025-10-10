@@ -1,0 +1,24 @@
+input:
+  aws_s3:
+    bucket: ${S3_BUCKET}
+    prefix: ""  # Scan entire bucket
+    region: ${AWS_REGION:us-east-1}
+    credentials:
+      id: ${AWS_ACCESS_KEY_ID}
+      secret: ${AWS_SECRET_ACCESS_KEY}
+    codec: all-bytes
+
+pipeline:
+  processors:
+    - mapping: |
+        root.file_key = meta("s3_key")
+        root.file_size = meta("s3_content_length")
+        root.content_preview = content().string().slice(0, 100)
+
+output:
+  stdout:
+    codec: lines
+
+logger:
+  level: INFO
+  format: json

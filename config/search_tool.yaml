@@ -1,0 +1,41 @@
+input:
+  generate:
+    mapping: |
+      root = {"query": env("SEARCH_QUERY").or("What is libsodium?")}
+    count: 1
+
+pipeline:
+  processors:
+    # Generate embeddings for the query
+    - mapping: |
+        root = {
+          "model": "text-embedding-ada-002",
+          "input": json("query")
+        }
+
+    - http:
+        verb: POST
+        url: https://api.openai.com/v1/embeddings
+        headers:
+          Authorization: Bearer ${OPENAI_API_KEY}
+          Content-Type: application/json
+        retries: 2
+        timeout: 10s
+
+    # Extract embedding vector
+    - mapping: |
+        root.query_text = json("input")
+        root.query_vector = content().parse_json().data.index(0).embedding
+
+    # For now, just return success since we can't directly query CyborgDB
+    - mapping: |
+        root = {
+          "status": "success",
+          "query": this.query_text,
+          "embedding_dimensions": this.query_vector.length(),
+          "message": "Query embedding generated. To search CyborgDB, use the CyborgDB API directly with this embedding."
+        }
+
+output:
+  stdout:
+    codec: json_lines
