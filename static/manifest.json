@@ -5,7 +5,7 @@
   "transport": "sse",
   "endpoints": {
     "sse": "http://23.22.29.11:8080/sse",
-    "message": "http://23.22.29.11:8080/message"
+    "messages": "http://23.22.29.11:8080/message"
   },
   "tools": [
     {
