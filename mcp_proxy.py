@@ -164,11 +164,17 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
                     if additional_params:
                         url += "&" + urllib.parse.urlencode(additional_params, doseq=True)
 
+                print(f"Forwarding to: {url}")
+                print(f"POST data: {post_data.decode('utf-8')[:200]}...")
+
                 response = requests.post(
                     url,
                     data=post_data,
                     headers={'Content-Type': 'application/json'}
                 )
+
+                print(f"RedPanda response: {response.status_code}")
+                print(f"RedPanda response body: {response.text[:200]}...")
 
                 self.send_response(response.status_code)
                 self.send_header('Content-Type', 'application/json')
