@@ -15,8 +15,9 @@ REDPANDA_MCP_PORT = 8082  # RedPanda Connect MCP server
 PROXY_PORT = 8081  # This proxy server port
 NGROK_URL = "https://YOUR-NGROK-URL.ngrok.app"  # Update this with your actual ngrok URL
 
-# Store active sessions
+# Store active sessions and their SSE connections
 active_sessions = {}
+sse_connections = {}
 
 MANIFEST = {
     "name": "CyborgDB Query Server",
@@ -118,13 +119,12 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
                         session_id = query_params['sessionId'][0]
                         print(f"Using session ID from query params: {session_id}")
                     else:
-                        # Auto-create a session by connecting to SSE briefly
+                        # Auto-create a session by connecting to SSE and keeping it alive
                         print("No session ID found, creating one...")
                         try:
                             sse_response = requests.get(
                                 f"http://localhost:{REDPANDA_MCP_PORT}/sse",
-                                stream=True,
-                                timeout=5
+                                stream=True
                             )
 
                             # Extract session ID from first SSE message
@@ -135,13 +135,12 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
                                     if line_str.startswith('data: /message?sessionId='):
                                         session_id = line_str.split('sessionId=')[1]
                                         active_sessions[client_ip] = session_id
+                                        sse_connections[client_ip] = sse_response
                                         print(f"Auto-created session ID: {session_id}")
                                         break
 
-                            # Close the SSE connection
-                            sse_response.close()
-
                             if not session_id:
+                                sse_response.close()
                                 raise Exception("Could not extract session ID from SSE")
 
                         except Exception as e:
