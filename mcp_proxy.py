@@ -12,7 +12,7 @@ import threading
 
 # Configuration
 REDPANDA_MCP_PORT = 8082  # RedPanda Connect MCP server
-PROXY_PORT = 8080  # This proxy server port
+PROXY_PORT = 8081  # This proxy server port
 NGROK_URL = "https://YOUR-NGROK-URL.ngrok.app"  # Update this with your actual ngrok URL
 
 MANIFEST = {
@@ -139,7 +139,6 @@ def run_proxy(port=8080):
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1:
-        global NGROK_URL
         NGROK_URL = sys.argv[1]
         # Update manifest with provided URL
         MANIFEST["endpoints"]["sse"] = f"{NGROK_URL}/sse"
