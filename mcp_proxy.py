@@ -108,11 +108,17 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
                 client_ip = self.client_address[0]
                 session_id = active_sessions.get(client_ip)
 
+                print(f"POST request from {client_ip}")
+                print(f"Active sessions: {active_sessions}")
+                print(f"Query params: {query_params}")
+
                 if not session_id:
                     # Try to extract from existing query params first
                     if query_params.get('sessionId'):
                         session_id = query_params['sessionId'][0]
+                        print(f"Using session ID from query params: {session_id}")
                     else:
+                        print("No session ID found, returning 400")
                         self.send_response(400)
                         self.send_header('Content-Type', 'application/json')
                         self.end_headers()
@@ -144,6 +150,9 @@ class MCPProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.write(response.content)
 
             except Exception as e:
+                print(f"ERROR in POST handler: {e}")
+                import traceback
+                traceback.print_exc()
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
