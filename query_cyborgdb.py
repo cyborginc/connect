@@ -99,10 +99,14 @@ def main():
         for i, result in enumerate(results['results'], 1):
             metadata = result.get('metadata', {})
             print(f"{i}. {metadata.get('path', 'Unknown file')}")
-            print(f"   Score: {result.get('score', 0):.4f}")
-            preview = metadata.get('content_preview', '')
-            if preview:
-                print(f"   Preview: {preview[:150]}...")
+            print(f"   Score: {result.get('distance', 0):.4f}")
+
+            # Show content preview
+            content = metadata.get('content', metadata.get('content_preview', ''))
+            if content:
+                print(f"   Content Preview: {content[:300]}...")
+            else:
+                print(f"   Content: No content stored")
             print()
     else:
         print("📭 No matching documents found")

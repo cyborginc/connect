@@ -11,7 +11,7 @@ from urllib.parse import urlparse, parse_qs
 import uuid
 
 # Configuration
-PROXY_PORT = 8081
+PROXY_PORT = 8083
 NGROK_URL = "https://YOUR-NGROK-URL.ngrok.app"
 
 # Load environment variables
@@ -135,11 +135,13 @@ def handle_query_documents(params: dict) -> dict:
 
             for result in results['results']:
                 metadata = result.get('metadata', {})
+                content = metadata.get('content', metadata.get('content_preview', ''))
                 formatted_results["documents"].append({
                     "file": metadata.get('path', 'unknown'),
                     "score": result.get('distance', 0),
                     "bucket": metadata.get('bucket', ''),
-                    "preview": metadata.get('content_preview', '')[:200]
+                    "content": content if content else "No content stored - document needs re-indexing",
+                    "preview": content[:500] if content else "No content"
                 })
 
             return formatted_results

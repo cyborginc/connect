@@ -1,3 +1,9 @@
+rate_limit_resources:
+  - label: embeddings_rl
+    local:
+      count: 10
+      interval: 1s
+
 input:
   aws_s3:
     bucket: ${S3_BUCKET}
@@ -16,11 +22,16 @@ pipeline:
         level: INFO
         message: "📄 Processing: ${! meta(\"s3_key\") }"
 
-    # Prepare for OpenAI
+    # Store original content in metadata
+    - mapping: |
+        meta file_content = content().string().slice(0, 8000)
+        root = content()
+
+    # Prepare OpenAI request
     - mapping: |
         root = {
           "model": "text-embedding-ada-002",
-          "input": content().string().slice(0, 8000)
+          "input": meta("file_content")
         }
 
     # Call OpenAI
@@ -30,12 +41,14 @@ pipeline:
         headers:
           Authorization: Bearer ${OPENAI_API_KEY}
           Content-Type: application/json
+        rate_limit: embeddings_rl
         retries: 3
         timeout: 30s
 
     # Extract embeddings and prepare for CyborgDB
     - mapping: |
         let embeddings = content().parse_json().data.index(0).embedding
+        let original_content = meta("file_content")
         root = {
           "id": uuid_v4(),
           "vector": $embeddings,
@@ -43,6 +56,8 @@ pipeline:
             "source": "s3",
             "path": meta("s3_key"),
             "bucket": meta("s3_bucket"),
+            "content": $original_content,
+            "content_preview": $original_content.slice(0, 500),
             "indexed_at": now().string()
           }
         }
